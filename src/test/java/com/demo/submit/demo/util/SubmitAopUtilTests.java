@@ -79,7 +79,7 @@ public class SubmitAopUtilTests {
     }
 
     public void run(Consumer<String> consumer) {
-        var service = Executors.newFixedThreadPool(10);
+        var service = Executors.newVirtualThreadPerTaskExecutor();
         for (var i = 0; i < 10; i++) {
             var uuid = UUID.randomUUID().toString();
             Stream.iterate(0, n -> n + 1).limit(10).forEach(j -> {
@@ -87,7 +87,7 @@ public class SubmitAopUtilTests {
             });
         }
         try {
-            Thread.sleep(10000);
+            Thread.sleep(5000);
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
