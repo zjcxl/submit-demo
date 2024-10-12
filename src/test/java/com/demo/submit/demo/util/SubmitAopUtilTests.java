@@ -6,7 +6,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -24,8 +23,6 @@ import java.util.stream.Stream;
 @SpringBootTest
 public class SubmitAopUtilTests {
 
-    private final Map<String, String> CACHE_MAP = new ConcurrentHashMap<>();
-    private final Map<String, AtomicInteger> CACHE_MAP_2 = new ConcurrentHashMap<>();
     @Resource
     private StringRedisTemplate stringRedisTemplate;
 
@@ -36,48 +33,11 @@ public class SubmitAopUtilTests {
         test3();
     }
 
-    public void write(String key) {
-        log.info("write key: {}", key);
-    }
-
-    @Test
-    public void test1() {
-        System.out.println("--------------test1--------------");
-        run(uuid -> {
-            if (Boolean.FALSE.equals(stringRedisTemplate.hasKey(uuid))) {
-                // 设置值
-                stringRedisTemplate.opsForValue().setIfAbsent(uuid, "");
-                // 进行输出操作
-                write(uuid);
-            }
-        });
-    }
-
-    @Test
-    public void test2() {
-        System.out.println("--------------test2--------------");
-        run(uuid -> {
-            if (!CACHE_MAP.containsKey(uuid)) {
-                // 设置值
-                CACHE_MAP.put(uuid, "");
-                // 进行输出操作
-                write(uuid);
-            }
-        });
-    }
-
-    @Test
-    public void test3() {
-        System.out.println("--------------test3--------------");
-        run(uuid -> {
-            var count = CACHE_MAP_2.computeIfAbsent(uuid, k -> new AtomicInteger()).incrementAndGet();
-            if (count == 1) {
-                // 进行输出操作
-                write(uuid);
-            }
-        });
-    }
-
+    /**
+     * 方法接收一个消费函数，已处理10轮，每轮10次（相同key）的高并发请求
+     *
+     * @param consumer 具体的处理函数，主要用于模拟是否能够有效拦截重复请求
+     */
     public void run(Consumer<String> consumer) {
         var service = Executors.newVirtualThreadPerTaskExecutor();
         for (var i = 0; i < 10; i++) {
@@ -92,6 +52,65 @@ public class SubmitAopUtilTests {
             throw new RuntimeException(e);
         }
         service.close();
+    }
+
+    /**
+     * 模拟的处理业务逻辑，这里只是简单的输出。如果每个key只输出了一次说明这个方法是合理的
+     *
+     * @param key key
+     */
+    public void write(String key) {
+        log.info("write key: {}", key);
+    }
+
+    /**
+     * 使用redis作为缓存，进行重复请求拦截
+     * 先判断key是否存在，不存在则设置key，然后进行输出操作
+     */
+    @Test
+    public void test1() {
+        System.out.println("--------------test1--------------");
+        run(uuid -> {
+            if (Boolean.FALSE.equals(stringRedisTemplate.hasKey(uuid))) {
+                stringRedisTemplate.opsForValue().setIfAbsent(uuid, "");
+                write(uuid);
+            }
+        });
+    }
+
+    /**
+     * 使用ConcurrentHashMap作为缓存，进行重复请求拦截
+     * 先判断key是否存在，不存在则设置key，然后进行输出操作
+     */
+    @Test
+    public void test2() {
+        System.out.println("--------------test2--------------");
+        var cacheMap = new ConcurrentHashMap<String, String>();
+        run(uuid -> {
+            if (!cacheMap.containsKey(uuid)) {
+                // 设置值
+                cacheMap.put(uuid, "");
+                // 进行输出操作
+                write(uuid);
+            }
+        });
+    }
+
+    /**
+     * 使用ConcurrentHashMap作为缓存，进行重复请求拦截
+     * 使用computeIfAbsent方法，先判断key是否存在，不存在则设置一个原子计数器，然后加1并且获取值，如果值为1则进行输出操作
+     */
+    @Test
+    public void test3() {
+        System.out.println("--------------test3--------------");
+        var cacheMap = new ConcurrentHashMap<String, AtomicInteger>();
+        run(uuid -> {
+            var count = cacheMap.computeIfAbsent(uuid, k -> new AtomicInteger()).incrementAndGet();
+            if (count == 1) {
+                // 进行输出操作
+                write(uuid);
+            }
+        });
     }
 
 }
